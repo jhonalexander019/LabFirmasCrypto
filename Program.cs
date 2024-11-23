@@ -95,37 +95,38 @@ class Program
         string message = Console.ReadLine();
         byte[] messageBytes = Encoding.UTF8.GetBytes(message);
 
-        var publicKeyFiles = Directory.GetFiles(keysDirectory, "clave_publica_*.xml");
-        if (!publicKeyFiles.Any())
+        Console.WriteLine("Claves privadas disponibles:");
+        var privateKeyFiles = Directory.GetFiles(keysDirectory, "clave_privada_*.xml");
+        if (!privateKeyFiles.Any())
         {
-            Console.WriteLine("No hay claves públicas disponibles.");
+            Console.WriteLine("No hay claves privadas disponibles.");
             return;
         }
 
-        Console.WriteLine("Claves públicas disponibles:");
-        for (int i = 0; i < publicKeyFiles.Length; i++)
+        for (int i = 0; i < privateKeyFiles.Length; i++)
         {
-            Console.WriteLine($"{i + 1}. {Path.GetFileName(publicKeyFiles[i])}");
+            Console.WriteLine($"{i + 1}. {Path.GetFileName(privateKeyFiles[i])}");
         }
 
-        Console.Write("Seleccione una clave pública por su número: ");
-        if (!int.TryParse(Console.ReadLine(), out int publicKeyIndex) || publicKeyIndex < 1 || publicKeyIndex > publicKeyFiles.Length)
+        Console.Write("Seleccione una clave privada por su número: ");
+        if (!int.TryParse(Console.ReadLine(), out int privateKeyIndex) || privateKeyIndex < 1 || privateKeyIndex > privateKeyFiles.Length)
         {
             Console.WriteLine("Selección inválida.");
             return;
         }
 
-        string selectedPublicKeyPath = publicKeyFiles[publicKeyIndex - 1];
-        string privateKeyPath = selectedPublicKeyPath.Replace("clave_publica_", "clave_privada_");
-        if (!File.Exists(privateKeyPath))
+        string selectedPrivateKeyPath = privateKeyFiles[privateKeyIndex - 1];
+        string correspondingPublicKeyPath = selectedPrivateKeyPath.Replace("clave_privada_", "clave_publica_");
+        if (!File.Exists(correspondingPublicKeyPath))
         {
-            Console.WriteLine("La clave privada correspondiente no se encontró.");
+            Console.WriteLine("La clave pública correspondiente no se encontró.");
             return;
         }
 
         using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider())
         {
-            rsa.FromXmlString(File.ReadAllText(privateKeyPath));
+            // Leer la clave privada y generar la firma
+            rsa.FromXmlString(File.ReadAllText(selectedPrivateKeyPath));
             byte[] signature = rsa.SignData(messageBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -133,20 +134,22 @@ class Program
 
             using (var archive = ZipFile.Open(compressedFilePath, ZipArchiveMode.Create))
             {
+                // Agregar la clave pública correspondiente al archivo comprimido
                 var publicKeyEntry = archive.CreateEntry("clave_publica.xml");
                 using (var publicKeyStream = publicKeyEntry.Open())
                 {
-                    byte[] publicKeyBytes = File.ReadAllBytes(selectedPublicKeyPath);
+                    byte[] publicKeyBytes = File.ReadAllBytes(correspondingPublicKeyPath);
                     publicKeyStream.Write(publicKeyBytes, 0, publicKeyBytes.Length);
                 }
 
+                // Agregar el mensaje al archivo comprimido
                 var messageEntry = archive.CreateEntry("mensaje.txt");
                 using (var messageStream = messageEntry.Open())
                 {
                     messageStream.Write(messageBytes, 0, messageBytes.Length);
                 }
 
-                // Crear entrada para la firma
+                // Agregar la firma al archivo comprimido
                 var signatureEntry = archive.CreateEntry("firma.txt");
                 using (var signatureStream = signatureEntry.Open())
                 {
@@ -156,6 +159,7 @@ class Program
 
             Console.WriteLine($"Archivo comprimido generado: {compressedFilePath}");
         }
+
     }
 
     static void ListCompressedFiles(string compressedDirectory)
